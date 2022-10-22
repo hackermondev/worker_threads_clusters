@@ -1,5 +1,5 @@
 'use strict';
 
 
-import Server from './server';
+import Server from './server/Server';
 export { Server };

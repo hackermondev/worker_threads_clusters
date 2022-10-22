@@ -1,64 +1,25 @@
-import express, { Express, NextFunction, Request, Response } from 'express';
-import cors from 'cors';
-import bodyParser from 'body-parser';
-
-import { existsSync, mkdirSync, readdirSync, rmdirSync, statSync, writeFileSync } from 'fs';
-import { hostname, tmpdir } from 'os';
 import { join } from 'path';
+
 import { Worker } from 'worker_threads';
-import { getCPUUsage } from '../helpers/cpu';
-import type { ServerAuth } from './types';
-import { randomUUID } from 'crypto';
+import { Express, Request, Response } from 'express';
+import BundlesManager from './BundlesManager';
+import { randomUUID } from 'node:crypto';
 
-declare module 'worker_threads' {
-    interface Worker {
-        id?: string;
-		isOnline: boolean;
-    }
-}
-
-export default class Server {
-	public name: string;
-	public _http: Express;
+export default class WorkersManager {
+	private _http: Express;
+	private bundlesManager: BundlesManager;
 	public workers: Worker[];
 
-	private _port: number;
-	private auth: ServerAuth;
-	private cachedBundledHashes: string[];
-	private tmpDir: string;
-
-	constructor({ name, auth, port }: { name?: string, auth: ServerAuth, port: number }) {
+	constructor(http: Express, bundlesManager: BundlesManager) {
+		this._http = http;
 		this.workers = [];
-		this.tmpDir = join(tmpdir(), 'workers-nodes-bundled');
 
-		this.cachedBundledHashes = this.getCachedBundledHashes();
-		this._http = express();
-
-		this.name = name || hostname();
-		this._port = port;
-		this.auth = auth;
-		
-		// Register routes & middlewares
-		this._http.disable('x-powered-by');
-		this._http.use(cors({ origin: '*', preflightContinue: false }));
-		this._http.use(this._authMiddleware.bind(this));
-
-		this._http.use(bodyParser.json());
-		this._http.use(bodyParser.raw({ type: ['application/octet-stream'], limit: '1GB' }));
-
-		this._http.get('/', (_, res) => res.json({ name: this.name, cachedBundledHashes: this.cachedBundledHashes }));
-		this._http.get('/health', async (_, res) => 
-			res.json({
-				workersRunning: this.workers.length,
-				cpuUsage: await getCPUUsage(),
-			})
-		);
-
+		this.bundlesManager = bundlesManager;
 
 		this._http.get('/workers', (_, res) => res.json(this.workers.map((w) => w.id)));
 		this._http.post('/worker', async (req, res) => {
 			const { bundleHash, extraData, exitOnRequestEnd } = req.body;
-			if(!this.cachedBundledHashes.includes(bundleHash)) return res.status(400).end();
+			if(!this.bundlesManager.cachedBundledHashes.includes(bundleHash)) return res.status(400).end();
 
 			const w = this.createWorker(bundleHash, extraData);
 
@@ -86,71 +47,12 @@ export default class Server {
 			this.pipeWorkerWriteStreams(worker, req, res);
 			return 1;
 		});
-	
-		
-		
-
-
-		this._http.post('/bundles/create', async (req, res) => {
-			const { hash } = req.body;
-			const file = join(this.tmpDir, `${hash}.js`);
-
-			writeFileSync(file, '');
-			this.cachedBundledHashes.push(hash);
-
-			res.status(201).end();
-		});
-
-		this._http.get('/bundles/:hash', async (req, res) => {
-			if(!this.cachedBundledHashes.includes(req.params.hash)) return res.status(404).end();
-
-			const file = join(this.tmpDir, `${req.params.hash}.js`);
-			const stat = statSync(file);
-
-			return res.json({
-				hash: req.params.hash,
-				size: stat.size,
-				created: stat.birthtime.toLocaleString('UTC')
-			})
-		});
-
-		this._http.post('/bundles/:hash/data', async (req, res) => {
-			if(!this.cachedBundledHashes.includes(req.params.hash)) return res.status(404).end();
-			if(!Buffer.isBuffer(req.body)) return res.status(400).end();
-
-			const file = join(this.tmpDir, `${req.params.hash}.js`);
-
-			const compression = req.query['compression'] || 'none';
-			const data = req.body;
-
-			
-			if(compression == 'none') {
-				writeFileSync(file, data);
-			}
-
-			return res.status(204).end();
-		});
 	}
 
-
-	public clearAllCachedBundles() {
-		rmdirSync(this.tmpDir);
-		mkdirSync(this.tmpDir);
-
-		this.cachedBundledHashes = [];
-	}
-	
-	public start(): Promise<void> {
-		return new Promise((resolve) => 
-			// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-			//@ts-ignore
-			this._http.listen(this._port, resolve)
-		);	
-	}
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	private createWorker(bundleHash: string, extra: any): Worker {
-		const file = join(this.tmpDir, `${bundleHash}.js`);
+		const file = join(this.bundlesManager.tmpDir, `${bundleHash}.js`);
 		const id = randomUUID();
 
 		const worker = new Worker(file, {
@@ -286,43 +188,5 @@ export default class Server {
 				
 			res.end();
 		});
-	}
-
-
-
-	private getCachedBundledHashes() {
-		const tempDirectory = this.tmpDir;
-		if(!existsSync(tempDirectory)) mkdirSync(tempDirectory);
-
-		const files = readdirSync(tempDirectory);
-		const hashes = files.map((f) => f.split('.')[0]);
-		return hashes;
-	}
-
-	private _authMiddleware(request: Request, response: Response, next: NextFunction) {
-		response.set('Access-Control-Allow-Origin', '*');
-		response.set('server', 
-			// eslint-disable-next-line @typescript-eslint/no-var-requires
-			`worker_threads_nodes/${require('../../package.json').version}`);
-
-		const rawAuthorization = request.headers.authorization;
-
-		const type = rawAuthorization?.split(' ')[0];
-		const authorization = rawAuthorization?.split(' ')[1];
-
-		if(type && type.toLowerCase() == 'basic' && authorization) {
-			const decodedAuth = Buffer.from(authorization, 'base64').toString();
-			
-			const username = decodedAuth.split(':')[0];
-			const password = decodedAuth.split(':')[1];
-
-			if(this.auth.username == username && this.auth.password == password) return next();
-		}
-
-		response.status(401);
-		response.set('WWW-Authenticate', 'Basic realm="worker_threads_nodes"');
-		response.send('Authorization required to continue.');
-
-		next();
 	}
 }
