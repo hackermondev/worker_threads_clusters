@@ -45,6 +45,7 @@ c.addNode('http://username:password@node5.clusters.local');
 	worker.on('online', () => console.log('worker is online'));
 	worker.on('error', () => console.log('error'));
 	worker.on('exit', () => console.log('exit'));
+	worker.on('message', (data) => console.log('recieved message:', data));
 
 	setInterval(()=>{
 		worker.postMessage('balls');
@@ -69,6 +70,25 @@ const s = new Server({
 
 s.start();
 // the server will automatically start processing requests from clients
+```
+
+### Worker (run.js)
+```js
+const { isMainThread, parentPort } = require('worker_threads');
+
+if(!isMainThread) {
+	console.log("yooooo i'm alive!!!!")
+	parentPort.on("message", (data) => {
+		// messages can be sent and recieved
+		console.log('got message:', data);
+		parentPort.send(data);
+	});
+
+	doSomethingReallyIntensiveCpuTask();
+} else {
+	console.log("run me through a worker, smh")
+}
+
 ```
 
 # About
