@@ -7,7 +7,7 @@ import { join } from 'path';
 
 import { ServerAuth } from '../../server/Server';
 import calculateFileHash from '../../helpers/sha256';
-import { createReadStream } from 'fs';
+import { createReadStream, rmSync } from 'fs';
 import Worker, { WorkerOptions } from './Worker';
 
 export interface NodeUsage {
@@ -111,6 +111,7 @@ export default class NodeClient {
 			}); // TODO: compress big files
 		}
 
+		rmSync(outFile);
 		return hash;
 	}
 }
