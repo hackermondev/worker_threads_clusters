@@ -7,14 +7,6 @@ import getCPUUsage from '../helpers/cpu';
 import BundlesManager from './BundlesManager';
 import WorkersManager from './WorkersManager';
 
-declare module 'worker_threads' {
-    interface Worker {
-        id?: string;
-		isOnline: boolean;
-    }
-}
-
-
 export interface ServerAuth {
     username: string;
     password: string;

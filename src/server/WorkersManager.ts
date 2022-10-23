@@ -5,6 +5,15 @@ import { Express, Request, Response } from 'express';
 import BundlesManager from './BundlesManager';
 import { randomUUID } from 'node:crypto';
 
+
+declare module 'worker_threads' {
+    interface Worker {
+        id?: string;
+		isOnline: boolean;
+		numOfConnectedSockets: number;
+    }
+}
+
 /**
  * @internal
  */
@@ -30,6 +39,7 @@ export default class WorkersManager {
 			res.set('x-worker-id', w.id);
 
 			this.pipeWorkerReadStreams(w, res, exitOnRequestEnd == true);
+			setTimeout(()=> res.end(), 5000)
 			return 1;
 		});
 
@@ -69,6 +79,7 @@ export default class WorkersManager {
 
 		worker.id = id;
 		worker.isOnline = false;
+		worker.numOfConnectedSockets = 0;
 
 		const onExit = () => {
 			const index = this.workers.findIndex((w) => w.id == id);
@@ -175,6 +186,7 @@ export default class WorkersManager {
 		const online = () => res.write('online: true\n');
 		res.write(`online: ${worker.isOnline}\n`);
 
+		worker.numOfConnectedSockets += 1;
 		if(!worker.isOnline) worker.once('online', online);
 		worker.stdout.on('data', stdout);
 		worker.stderr.on('data', stderr);
@@ -186,8 +198,18 @@ export default class WorkersManager {
 
 		// When connection is closed, remove listeners
 		res.once('close', () => {
-			if(exitOnRequestEnd) worker.terminate();
+			worker.numOfConnectedSockets -= 1;
 
+			if(exitOnRequestEnd && worker.numOfConnectedSockets == 0) {
+				// Close worker in 5 seconds if the connection is reconnected.
+				setTimeout(()=>{
+					if(worker.numOfConnectedSockets == 0) {
+						worker.terminate();
+					}
+				}, 5_000)
+			}
+
+			
 			worker.stdout.removeListener('data', stdout);
 			worker.stderr.removeListener('data', stderr);
 			worker.removeListener('exit', exit);

@@ -1,6 +1,6 @@
 /* eslint-disable no-case-declarations */
-import { EventEmitter, PassThrough } from 'stream';
-import axios from 'axios';
+import { EventEmitter, PassThrough, Readable } from 'stream';
+import axios, { AxiosResponse } from 'axios';
 import NodeClient from './NodeClient';
 import getHTTPClient from '../../helpers/getHTTPClient';
 import { ClientRequest } from 'http';
@@ -236,11 +236,15 @@ export default class Worker extends EventEmitter {
 	async _connect() {
 		if(this.isLaunched) throw new Error('Worker is already launched');
 
+		let rs: ClientRequest | null = null;
+		let manuallyClosed = false;
+
+		
 		this.exitCode = null;
 		let workerID = this.id;
 
 		if(!this.id) {
-			const response = await this._node.http.post('/worker', {
+			const response: AxiosResponse<Readable> = await this._node.http.post('/worker', {
 				bundleHash: this._hash,
 				extraData: this.options,
 				exitOnRequestEnd: true,
@@ -250,26 +254,26 @@ export default class Worker extends EventEmitter {
 				return this._handleError(response);
 			}
 
-			response.data.pipe(this._pipes[0]);
+			response.data.pipe(this._pipes[0], { end: false });
 
 			const request: ClientRequest = response.request;
 			request.socket?.on('close', () => {
 				if(this.exitCode) return;
 
-				// disconnected
-				const err = new Error('Worker connection was disconnected.');
-
-				// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-				//@ts-ignore
-				err.code = 'ERRWORKERDISCONNECTED';
-
-				this._handleError(err)
+				manuallyClosed = true
+				rs?.end();
+				
+				// attempt reconnection
+				this.isLaunched = false;
+				this._connect();			
 			});
 
 			if(response.headers['x-worker-id']) workerID = response.headers['x-worker-id'];
 		} else {
-			const response = await this._node.http.get(`/worker/${this.id}/streams-pipe`, { responseType: 'stream' });
-			response.data.pipe(this._pipes[0]);
+			const response: AxiosResponse<Readable> = await this._node.http.get(`/worker/${this.id}/streams-pipe?exitOnRequestEnd=true`, { responseType: 'stream' }).catch((err) => err);
+			if(response instanceof Error || axios.isAxiosError(response)) return this._handleError(response);
+
+			response.data.pipe(this._pipes[0], { end: false });
 		}
 
 
@@ -278,9 +282,6 @@ export default class Worker extends EventEmitter {
 		// Write stream
 		// We use node's builtin HTTP instead of axios here because axios is fucking stupid and cannot work properly with event streams
 		const http = getHTTPClient(this._node._baseHost);
-
-		let rs: ClientRequest | null = null;
-		let manuallyClosed = false;
 		
 		const startWriteStream = () => {
 			//make sure previous connection is closed
@@ -293,13 +294,18 @@ export default class Worker extends EventEmitter {
 			});
 			
 			rs.on('error', (err) => {
+				if(manuallyClosed) return;
+
+				const ignoredCodes = ['ECONNRESET', 'ECONNREFUSED'];
+
 				// eslint-disable-next-line @typescript-eslint/ban-ts-comment
 				//@ts-ignore
-				if(err.code == 'ECONNREFUSED') return;
+				if(ignoredCodes.includes(err.code)) return;
+
 				throw err;
 			});
 
-			this._pipes[1].pipe(rs);
+			this._pipes[1].pipe(rs, { end: false });
 			this.isLaunched = true;
 
 			rs.on('response', (response) => {
