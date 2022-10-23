@@ -5,6 +5,9 @@ import { Express, Request, Response } from 'express';
 import BundlesManager from './BundlesManager';
 import { randomUUID } from 'node:crypto';
 
+/**
+ * @internal
+ */
 export default class WorkersManager {
 	private _http: Express;
 	private bundlesManager: BundlesManager;

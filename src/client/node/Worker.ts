@@ -5,22 +5,77 @@ import getHTTPClient from '../../helpers/getHTTPClient';
 import { ClientRequest } from 'http';
 
 
+/**
+ * @public
+ */
 export interface WorkerOptions { 
+	/**
+	 * List of arguments which would be stringified and appended to process.argv in the worker. This is mostly similar to the workerData but the values are available on the global process.argv as if they were passed as CLI options to the script.
+	 */
 	argv?: unknown[]
+
+
+	/**
+	 * Object of envs to pass to the worker
+	 */
 	env?: Record<string, unknown>
+	
+	/**
+	 *  List of node CLI options passed to the worker. V8 options (such as --max-old-space-size) and options that affect the process (such as --title) are not supported. If set, this is provided as process.execArgv inside the worker. By default, options are inherited from the parent thread.
+	 */
 	execArgv?: string[]
+
+	/**
+	 * Worker data to pass to the worker
+	 */
 	workerData?: unknown
+
+	/**
+	 * https://nodejs.org/api/worker_threads.html#new-workerfilename-options
+	 */
 	transferList?: Record<string, unknown>[]
+
+	/**
+	 * Whether or not stdin should be created for the worker
+	 * @defaultValue false
+	 */
 	stdin?: boolean
+
+	/**
+	 * Whether or not it should pipe `worker.stdout` and `worker.stderr` to `process.stdout` and `process.stderr`
+	 * @defaultValue true
+	 */
 	pipeToProcess?: boolean
+
+	/**
+	 * https://nodejs.org/api/worker_threads.html#workerresourcelimits
+	 */
 	resourceLimits?: {
+		/**
+		 * https://nodejs.org/api/worker_threads.html#workerresourcelimits
+		 */
 		maxOldGenerationSizeMb: number
+		
+		/**
+		 * https://nodejs.org/api/worker_threads.html#workerresourcelimits
+		 */
 		maxYoungGenerationSizeMb: number
+
+		/**
+		 * https://nodejs.org/api/worker_threads.html#workerresourcelimits
+		 */
 		codeRangeSizeMb: number
+
+		/**
+		 * https://nodejs.org/api/worker_threads.html#workerresourcelimits
+		 */
 		stackSizeMb: number
 	}
 }
 
+/**
+ * @public
+ */
 export default class Worker extends EventEmitter {
 	public id: string | null;
 	private _node: NodeClient;

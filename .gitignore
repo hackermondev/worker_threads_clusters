@@ -3,3 +3,6 @@ dist
 
 # temporary
 example
+.verb.md
+api-extractor.json
+yaml/

@@ -15,6 +15,9 @@ export interface NodeUsage {
 	cpuUsage: number[]
 }
 
+/**
+ * @internal
+ */
 export default class NodeClient {
 	public name: string | null;
 	public version: string | null;

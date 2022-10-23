@@ -4,6 +4,9 @@ import { existsSync, readdirSync, mkdirSync, writeFileSync, statSync, rmSync } f
 
 import { Express } from 'express';
 
+/**
+ * @internal
+ */
 export default class BundlesManager {
 	private _http: Express;
 	public tmpDir: string;

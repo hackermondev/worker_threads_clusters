@@ -21,6 +21,12 @@ export interface ServerAuth {
     password: string;
 }
 
+
+
+/**
+ * Base class for server
+ * @public
+ */
 export default class Server {
 	public name: string;
 	public _http: Express;
