@@ -34,6 +34,7 @@ export default class WorkersManager {
 			const worker = this.workers.find((w) => w.id == req.params.id);
 			if(!worker) return res.status(404).end();
 
+
 			res.status(200);
 			this.pipeWorkerReadStreams(worker, res, req.query['exitOnRequestEnd'] != undefined);
 			return 1;
@@ -130,6 +131,11 @@ export default class WorkersManager {
 				}
 			}
 		});
+
+		const exit = () => res.end();
+
+		worker.once('exit', exit);
+		worker.once('error', exit);
 	}
 
 	private pipeWorkerReadStreams(worker: Worker, res: Response, exitOnRequestEnd=false) {
@@ -147,20 +153,20 @@ export default class WorkersManager {
 		};
 
 		const exit = (exitCode: number) => {
-			res.end(`exit: ${exitCode}`);
+			res.end(`exit: ${exitCode}\n`);
 		};
 
 		const error = (err: Error) => {
-			res.end(`error: ${JSON.stringify({
+			res.end(`error: ${Buffer.from(JSON.stringify({
 				name: err.name,
 				message: err.message,
 				stack: err.stack
-			})}`);
+			})).toString('base64')}\n`);
 		};
 
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		const message = (data: any) => {
-			res.end(`message: ${Buffer.from(data).toString('base64')}`);
+			res.end(`message: ${Buffer.from(data).toString('base64')}\n`);
 		};
 
 		const online = () => res.write('online: true\n');

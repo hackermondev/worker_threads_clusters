@@ -3,7 +3,7 @@ import cors from 'cors';
 import bodyParser from 'body-parser';
 
 import { hostname } from 'os';
-import { getCPUUsage } from '../helpers/cpu';
+import getCPUUsage from '../helpers/cpu';
 
 import BundlesManager from './BundlesManager';
 import WorkersManager from './WorkersManager';
@@ -49,7 +49,7 @@ export default class Server {
 		this.bundles = new BundlesManager(this._http);
 		this.workersManager = new WorkersManager(this._http, this.bundles);
 
-		this._http.get('/', (_, res) => res.json({ name: this.name, cachedBundledHashes: this.bundles.cachedBundledHashes }));
+		this._http.get('/', (_, res) => res.json({ name: this.name, nodeVersion: process.versions.node }));
 		this._http.get('/health', async (_, res) => 
 			res.json({
 				workersRunning: this.workersManager.workers.length,
@@ -59,11 +59,14 @@ export default class Server {
 	}
 	
 	public start(): Promise<void> {
-		return new Promise((resolve) => 
+		return new Promise((resolve) => {
 			// eslint-disable-next-line @typescript-eslint/ban-ts-comment
 			//@ts-ignore
-			this._http.listen(this._port, resolve)
-		);	
+			const server = this._http.listen(this._port, resolve);
+			server.setTimeout(0);
+
+			this.bundles.clearAllCachedBundles();
+		});	
 	}
 	
 
@@ -72,6 +75,9 @@ export default class Server {
 		response.set('server', 
 			// eslint-disable-next-line @typescript-eslint/no-var-requires
 			`worker_threads_nodes/${require('../../package.json').version}`);
+
+		request.setTimeout(0);
+		request.connection.setTimeout(0);
 
 		const rawAuthorization = request.headers.authorization;
 

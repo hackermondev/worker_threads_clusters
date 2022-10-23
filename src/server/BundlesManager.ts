@@ -1,6 +1,6 @@
 import { join } from 'path';
 import { tmpdir } from 'node:os';
-import { existsSync, readdirSync, mkdirSync, writeFileSync, statSync, rmdirSync } from 'fs';
+import { existsSync, readdirSync, mkdirSync, writeFileSync, statSync, rmSync } from 'fs';
 
 import { Express } from 'express';
 
@@ -58,7 +58,7 @@ export default class BundlesManager {
 
 
 	public clearAllCachedBundles() {
-		rmdirSync(this.tmpDir);
+		rmSync(this.tmpDir, { 'recursive': true, 'force': true });
 		mkdirSync(this.tmpDir);
 
 		this.cachedBundledHashes = [];

@@ -3,7 +3,7 @@
 import fetch from 'node-fetch';
 import { expect } from 'chai';
 import { Server } from '../dist/index';
-import { getCPUUsage } from '../src/helpers/cpu';
+import getCPUUsage from '../src/helpers/cpu';
 
 
 // always use random number for server ports

@@ -3,7 +3,7 @@ import { cpus } from 'node:os';
 
 let timesBefore = cpus().map(c => c.times);
 
-export async function getCPUUsage(): Promise<number[]> {
+export default async function getCPUUsage(): Promise<number[]> {
 	const timesAfter = cpus().map(c => c.times);
 	const timeDeltas = timesAfter.map((t, i) => ({
 		user: t.user - timesBefore[i].user,
