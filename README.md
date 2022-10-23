@@ -42,7 +42,8 @@ c.addNode('http://username:password@node5.clusters.local');
 (async () => {
 	// a node is first chosen
 	// then the "run.js" file gets bundled with esbuild and uploaded to the node
-    // worker will then be launched on node
+	// worker will then be launched on node
+	
 	const worker = await c.spawnWorker('run.js');
 	worker.on('online', () => console.log('worker is online'));
 	worker.on('error', () => console.log('error'));
@@ -120,7 +121,7 @@ $ npm install && npm test
 Soon
 
 # TODO
-This is sort of an unfinished project. Right now, everything mentioned previously is implemented and new things are coming soon.
+This is sort of an unfinished project. Right now, everything mentioned previously is fully implemented and new things are coming soon.
 
 - UDP connection transport
 - Finish working on tests
