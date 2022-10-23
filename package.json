@@ -10,12 +10,13 @@
   ],
   "author": {
     "name": "Hackermon",
+    "email": "therealhackermon@gmail.com",
     "url": "https://daniel.is-a.dev"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/chriswells0/node-typescript-template.git"
+    "url": "https://github.com/hackermondev/worker_threads_clusters.git"
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
