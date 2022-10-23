@@ -78,7 +78,16 @@ export default class NodeClient {
 		if(!this.nodeVersion) await this.fetchInformation();
 
 		const outFile = join(tmpdir(), `${randomUUID()}.js`);
-		await esbuild.build({ outfile: outFile, bundle: true, platform: 'node', entryPoints: [filePath], minify: true, target: `node${this.nodeVersion}` });
+		await esbuild.build({ 
+			outfile: outFile, 
+			bundle: true, 
+			platform: 'node', 
+			entryPoints: [filePath], 
+			minify: true, 
+			target: `node${this.nodeVersion}`, 
+			keepNames: true,
+			sourcemap: 'inline'
+		});
 
 		const hash = await calculateFileHash(outFile);
 		const exists = await this.http.get(`/bundles/${hash}`).catch(() => false);
