@@ -92,12 +92,17 @@ export default class NodeClient {
 		const hash = await calculateFileHash(outFile);
 		const exists = await this.http.get(`/bundles/${hash}`).catch(() => false);
 		if(!exists) {
-			await this.http.post('/bundles/create', { hash });	
-			await this.http.post(`/bundles/${hash}/data?compression=none`, createReadStream(outFile), {
-				headers: {
-					'Content-Type': 'application/octet-stream'
-				}
-			}); // TODO: compress big files
+			try {
+				await this.http.post('/bundles/create', { hash });	
+				await this.http.post(`/bundles/${hash}/data?compression=none`, createReadStream(outFile), {
+					headers: {
+						'Content-Type': 'application/octet-stream'
+					}
+				}); // TODO: compress big files
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			} catch (error: any) {
+				throw new Error(`Could not upload bundle to node: ${error.message}`);
+			}
 		}
 
 		return hash;

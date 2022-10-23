@@ -1,9 +1,17 @@
 /* eslint-disable no-case-declarations */
 import { EventEmitter, PassThrough } from 'stream';
+import axios from 'axios';
 import NodeClient from './NodeClient';
 import getHTTPClient from '../../helpers/getHTTPClient';
 import { ClientRequest } from 'http';
 
+
+
+const workedExitError = new Error('Worker has exited.');
+
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+//@ts-ignore
+workedExitError.code = 'ERR_WORKER_EXITED';
 
 /**
  * @public
@@ -82,6 +90,7 @@ export default class Worker extends EventEmitter {
 	private _hash: string;
 	private _pipes: PassThrough[];
 
+	public exitCode: number | null;
 	public options: WorkerOptions;
 	public isLaunched: boolean;
 
@@ -93,6 +102,7 @@ export default class Worker extends EventEmitter {
 		super();
 
 		this.id = null;
+		this.exitCode = null;
 		this._hash = hash;
 		this._node = node;
 
@@ -109,6 +119,7 @@ export default class Worker extends EventEmitter {
 
 		this.processReadPipes();
 		this.stdin.on('data', (chunk) => {
+			if(this.exitCode) throw workedExitError;
 			const encoded = Buffer.from(chunk).toString('base64');
 			this._pipes[1].write(`stdin: ${encoded}\n`);
 
@@ -124,6 +135,16 @@ export default class Worker extends EventEmitter {
 		}
 
 		this._connect();
+	}
+
+	private _handleError(error: Error) {
+		this.emit('error', error);
+		this.exitCode = 1;
+
+		const listener = this.rawListeners('error');
+		if(listener.length < 1) throw error;
+
+		return error;
 	}
 
 	private processReadPipes() {
@@ -142,17 +163,16 @@ export default class Worker extends EventEmitter {
 			case 'error':
 				const data = JSON.parse(Buffer.from(value, 'base64').toString());
 				const error = new Error(data.stack);
-				
-				this.emit('error', error);
-				const listener = this.rawListeners('error');
-				if(listener.length < 1) throw error;
+				this._handleError(error);
 
 				break
 			
 			case 'exit':
 				const code = parseInt(value);
-				this.emit('exit', code);
 				this.isLaunched = false;
+				this.exitCode = code;
+
+				this.emit('exit', code);
 				break
 
 			case 'stdout':
@@ -195,12 +215,15 @@ export default class Worker extends EventEmitter {
 	}
 
 	async postMessage(value: never) {
+		if(this.exitCode) throw workedExitError;
+
 		const encoded = Buffer.from(value).toString('base64');
 		this._pipes[1].write(`worker_message: ${encoded}\n`);	
 	}
 
 	terminate() {
-		return new Promise((resolve) => {
+		return new Promise((resolve, reject) => {
+			if(this.exitCode) return reject(workedExitError);
 			this._pipes[1].write('terminate: true\n');
 
 			this.once('exit', () => {
@@ -212,6 +235,8 @@ export default class Worker extends EventEmitter {
 
 	async _connect() {
 		if(this.isLaunched) throw new Error('Worker is already launched');
+
+		this.exitCode = null;
 		let workerID = this.id;
 
 		if(!this.id) {
@@ -219,9 +244,28 @@ export default class Worker extends EventEmitter {
 				bundleHash: this._hash,
 				extraData: this.options,
 				exitOnRequestEnd: true,
-			}, { responseType: 'stream' });
+			}, { responseType: 'stream' }).catch((err) => err);
 			
-			response.data.pipe(this._pipes[0]);			
+			if(response instanceof Error || axios.isAxiosError(response)) {
+				return this._handleError(response);
+			}
+
+			response.data.pipe(this._pipes[0]);
+
+			const request: ClientRequest = response.request;
+			request.socket?.on('close', () => {
+				if(this.exitCode) return;
+
+				// disconnected
+				const err = new Error('Worker connection was disconnected.');
+
+				// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+				//@ts-ignore
+				err.code = 'ERRWORKERDISCONNECTED';
+
+				this._handleError(err)
+			});
+
 			if(response.headers['x-worker-id']) workerID = response.headers['x-worker-id'];
 		} else {
 			const response = await this._node.http.get(`/worker/${this.id}/streams-pipe`, { responseType: 'stream' });
@@ -239,12 +283,22 @@ export default class Worker extends EventEmitter {
 		let manuallyClosed = false;
 		
 		const startWriteStream = () => {
+			//make sure previous connection is closed
+			if(rs) rs.end();
+
 			rs = http.request(`${this._node._baseHost}/worker/${workerID}/streams-pipe`, {
 				method: 'POST',
 				auth: `${this._node._auth.username}:${this._node._auth.password}`,
 				timeout: 0
 			});
-	
+			
+			rs.on('error', (err) => {
+				// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+				//@ts-ignore
+				if(err.code == 'ECONNREFUSED') return;
+				throw err;
+			});
+
 			this._pipes[1].pipe(rs);
 			this.isLaunched = true;
 
@@ -253,7 +307,7 @@ export default class Worker extends EventEmitter {
 			});
 
 			rs.on('close', () => {
-				if(manuallyClosed) return;
+				if(manuallyClosed || this.exitCode) return;
 
 				// If disconnect, restart write stream
 				startWriteStream();
@@ -263,7 +317,6 @@ export default class Worker extends EventEmitter {
 		startWriteStream();
 		const exit = () => {
 			manuallyClosed = true
-			rs?.end();
 
 			// Remove itself from the workers array in the node class
 			const index = this._node.workers.findIndex((w) => w.id == this.id);
@@ -277,5 +330,6 @@ export default class Worker extends EventEmitter {
 
 		this.once('exit', () => exit());
 		this.once('error', () => exit());
+		return true;
 	}
 }
