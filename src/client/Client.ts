@@ -19,7 +19,7 @@ export interface ClientOptions {
 	 * incremental - use the nodes in order, first worker on first node, 2nd worker on 2nd node, etc and it keeps resetting back to first worker and continues the cycle
 	 * balancing - it will fetch the cpu(s) usage of all the nodes and choose the best one to spawn the worker based on the usage percentage 
 	 */
-	choicesBehavior: 'random' | 'incremental' | 'balancing' 
+	nodeBehavior: 'random' | 'incremental' | 'balancing' 
 }
 
 /**
@@ -152,7 +152,7 @@ export default class Client {
 		if(this.nodes.length < 1) throw new Error('no available nodes');
 		let node: NodeClient = this.nodes[0];
 
-		switch(this._options.choicesBehavior) {
+		switch(this._options.nodeBehavior) {
 		case 'random':
 			// eslint-disable-next-line no-case-declarations
 			const index = Math.floor(Math.random()* this.nodes.length)

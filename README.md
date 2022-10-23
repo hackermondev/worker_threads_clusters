@@ -21,7 +21,7 @@ const { Client } = require('worker_threads_clusters');
 
 
 
-// choicesBehavior is how what node should be picked
+// nodeBehavior is how what node should be picked
 // 'random' | 'incremental' | 'balancing'
 /*
 random -  pick a random node
@@ -29,7 +29,7 @@ incremental - use the nodes in order, first worker on first node, 2nd worker on 
 balancing - it will fetch the cpu(s) usage of all the nodes and choose the best one to spawn the worker based on the usage percentage 
 */
 
-const c = new Client({ choicesBehavior: 'random' });
+const c = new Client({ nodeBehavior: 'random' });
 
 // connection transport is done through HTTP (udp support coming soon)
 c.addNode('http://username:password@node1.clusters.local');
