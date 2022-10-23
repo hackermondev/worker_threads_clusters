@@ -1,4 +1,5 @@
 import express, { Express, NextFunction, Request, Response } from 'express';
+import { bold, green } from 'chalk';
 import bodyParser from 'body-parser';
 
 import { hostname } from 'os';
@@ -23,14 +24,16 @@ export default class Server {
 	public _http: Express;
 
 	private _port: number;
+	private logging: boolean;
 	private auth: ServerAuth;
 	
 	private bundles: BundlesManager;
 	private workersManager: WorkersManager;
 
-	constructor({ name, auth, port }: { name?: string, auth: ServerAuth, port: number }) {
+	constructor({ name, auth, port, log }: { name?: string, auth: ServerAuth, port: number, log?: boolean }) {
 		this._http = express();
 
+		log = log || true;
 		this.name = name || hostname();
 		this._port = port;
 		this.auth = auth;
@@ -42,8 +45,9 @@ export default class Server {
 
 		this._http.use(this._authMiddleware.bind(this));
 
-		this.bundles = new BundlesManager(this._http);
-		this.workersManager = new WorkersManager(this._http, this.bundles);
+		this.logging = log;
+		this.bundles = new BundlesManager(this);
+		this.workersManager = new WorkersManager(this, this.bundles);
 
 		this._http.get('/', (_, res) => res.json({ name: this.name, nodeVersion: process.versions.node }));
 		this._http.get('/health', async (_, res) => 
@@ -53,15 +57,22 @@ export default class Server {
 			})
 		);	
 	}
-	
+
+	public _log(...data: unknown[]) {
+		if(!this.logging) return;
+		console.log(bold(...data))
+	}
+
 	public start(): Promise<void> {
 		return new Promise((resolve) => {
 			// eslint-disable-next-line @typescript-eslint/ban-ts-comment
 			//@ts-ignore
-			const server = this._http.listen(this._port, resolve);
-			server.setTimeout(0);
+			const server = this._http.listen(this._port, () => {
+				this._log('[http-server] started http server');
+				resolve();
+			});
 
-			this.bundles.clearAllCachedBundles();
+			server.setTimeout(0);
 		});	
 	}
 	
@@ -89,6 +100,7 @@ export default class Server {
 			if(this.auth.username == username && this.auth.password == password) return next();
 		}
 
+		this._log('[http-server] http connection from', green(request.ip), 'was rejected because of invalid auth');
 		response.set('WWW-Authenticate', 'Basic realm="worker_threads_nodes"');
 		response.status(401);
 		response.send('Authorization required to continue.');

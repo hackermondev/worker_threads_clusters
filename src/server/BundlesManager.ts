@@ -1,28 +1,34 @@
 import { join } from 'path';
+import { green, red, yellow } from 'chalk';
 import { tmpdir } from 'node:os';
 import { existsSync, readdirSync, mkdirSync, writeFileSync, statSync, rmSync } from 'fs';
 
 import { Express } from 'express';
+import Server from './Server';
 
 /**
  * @internal
  */
 export default class BundlesManager {
 	private _http: Express;
+	private _server: Server;
 	public tmpDir: string;
 	public cachedBundledHashes: string[];
 
-	constructor(http: Express) {
-		this._http = http;
+	constructor(server: Server) {
+		this._http = server._http;
+		this._server = server;
+
 		this.tmpDir = join(tmpdir(), 'workers-nodes-bundled');
 		this.cachedBundledHashes = this.getCachedBundledHashes();
-
+		if(this.cachedBundledHashes.length > 10) this.clearAllCachedBundles();
 
 		this._http.post('/bundles/create', async (req, res) => {
 			const { hash } = req.body;
 			const file = join(this.tmpDir, `${hash}.js`);
 
 			writeFileSync(file, '');
+			this._server._log('[bundle-manager] created new bundle with hash', green(hash), '(saved to', yellow(file), ')');
 			this.cachedBundledHashes.push(hash);
 
 			res.status(201).end();
@@ -55,6 +61,7 @@ export default class BundlesManager {
 				writeFileSync(file, data);
 			}
 
+			this._server._log('[bundle-manager] updated bundle', green(req.params.hash), 'with', red(`${data.byteLength} bytes`));
 			return res.status(204).end();
 		});
 	}
@@ -73,6 +80,7 @@ export default class BundlesManager {
 
 		const files = readdirSync(tempDirectory);
 		const hashes = files.map((f) => f.split('.')[0]);
+
 		return hashes;
 	}
 }

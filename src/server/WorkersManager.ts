@@ -1,9 +1,11 @@
 import { join } from 'path';
+import { blue, green, red } from 'chalk';
 
 import { Worker } from 'worker_threads';
 import { Express, Request, Response } from 'express';
 import BundlesManager from './BundlesManager';
 import { randomUUID } from 'node:crypto';
+import Server from './Server';
 
 
 declare module 'worker_threads' {
@@ -18,12 +20,14 @@ declare module 'worker_threads' {
  * @internal
  */
 export default class WorkersManager {
+	private server: Server;
 	private _http: Express;
 	private bundlesManager: BundlesManager;
 	public workers: Worker[];
 
-	constructor(http: Express, bundlesManager: BundlesManager) {
-		this._http = http;
+	constructor(server: Server, bundlesManager: BundlesManager) {
+		this.server = server;
+		this._http = server._http;
 		this.workers = [];
 
 		this.bundlesManager = bundlesManager;
@@ -39,7 +43,6 @@ export default class WorkersManager {
 			res.set('x-worker-id', w.id);
 
 			this.pipeWorkerReadStreams(w, res, exitOnRequestEnd == true);
-			setTimeout(()=> res.end(), 5000)
 			return 1;
 		});
 
@@ -69,6 +72,7 @@ export default class WorkersManager {
 		const file = join(this.bundlesManager.tmpDir, `${bundleHash}.js`);
 		const id = randomUUID();
 
+		this.server._log('[worker-manager] creating worker from bundle', blue(bundleHash), '(worker id =', green(id), ')');
 		const worker = new Worker(file, {
 			...extra,
 
@@ -84,9 +88,15 @@ export default class WorkersManager {
 		const onExit = () => {
 			const index = this.workers.findIndex((w) => w.id == id);
 			this.workers.splice(index, 1);
+
+			this.server._log('[worker-manager] worker', green(id), 'hash exited.');
 		};
 
-		worker.once('online', () => worker.isOnline = true);
+		worker.once('online', () => {
+			worker.isOnline = true;
+			this.server._log('[worker-manager] worker', green(id), 'is online');
+		});
+
 		worker.on('error', onExit);
 		worker.on('exit', onExit);
 
@@ -115,6 +125,7 @@ export default class WorkersManager {
 			
 			case 'worker_message':
 				worker.postMessage(decoded);
+				this.server._log('[worker-manager] sent', red(`${decoded.length} bytes`), 'of data to worker', green(worker.id));
 				break
 			
 			case 'terminate':
@@ -187,6 +198,8 @@ export default class WorkersManager {
 		res.write(`online: ${worker.isOnline}\n`);
 
 		worker.numOfConnectedSockets += 1;
+		this.server._log('[worker-manager] new read stream socket to worker', green(worker.id), 'was created');
+
 		if(!worker.isOnline) worker.once('online', online);
 		worker.stdout.on('data', stdout);
 		worker.stderr.on('data', stderr);
@@ -199,11 +212,13 @@ export default class WorkersManager {
 		// When connection is closed, remove listeners
 		res.once('close', () => {
 			worker.numOfConnectedSockets -= 1;
+			this.server._log('[worker-manager] read stream socket to worker', green(worker.id), 'was closed');
 
 			if(exitOnRequestEnd && worker.numOfConnectedSockets == 0) {
 				// Close worker in 5 seconds if the connection is reconnected.
 				setTimeout(()=>{
 					if(worker.numOfConnectedSockets == 0) {
+						this.server._log('[worker-manager] terminating worker', green(worker.id), 'because no more connected read streams (all clients disconnected)');
 						worker.terminate();
 					}
 				}, 5_000)

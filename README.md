@@ -69,6 +69,7 @@ const s = new Server({
     },
     
 	port: 80,
+	log: true // Whether or not it should console.log when important stufff happens (default = true)
 });
 
 s.start();
