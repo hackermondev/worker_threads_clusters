@@ -40,7 +40,9 @@ c.addNode('http://username:password@node5.clusters.local');
 
 
 (async () => {
-    // worker will be launched on a random node that we specified
+	// a node is first chosen
+	// then the "run.js" file gets bundled with esbuild and uploaded to the node
+    // worker will then be launched on node
 	const worker = await c.spawnWorker('run.js');
 	worker.on('online', () => console.log('worker is online'));
 	worker.on('error', () => console.log('error'));
@@ -116,6 +118,11 @@ $ npm install && npm test
 
 # API
 Soon
+
+# Roadmap
+- UDP connection transport
+
+
 
 # License
 
