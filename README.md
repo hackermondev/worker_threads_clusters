@@ -119,9 +119,11 @@ $ npm install && npm test
 # API
 Soon
 
-# Roadmap
-- UDP connection transport
+# TODO
+This is sort of an unfinished project. Right now, everything mentioned previously is implemented and new things are coming soon.
 
+- UDP connection transport
+- Finish working on tests
 
 
 # License
