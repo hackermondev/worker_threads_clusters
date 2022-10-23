@@ -46,7 +46,15 @@ export default class NodeClient {
 		this._interval = null;
 	}
 
+	private async _testConnection(): Promise<boolean> {
+		const request = await this.http.get('/').catch(() => false);
+		return request != false
+	}
+
 	private async fetchInformation(onlyFetchUsage=false) {
+		const nodeIsOnline = await this._testConnection();
+		if(!nodeIsOnline) return;
+
 		if(onlyFetchUsage != true) {
 			const request = await this.http.get('/');
 
@@ -75,6 +83,9 @@ export default class NodeClient {
 	// Check if hash already exists in node
 	// If not, upload bundle to node
 	private async bundle(filePath: string) {
+		const nodeIsOnline = await this._testConnection();
+		if(!nodeIsOnline) throw new Error('Could not connect to node. Please verify that the server is running.');
+
 		if(!this.nodeVersion) await this.fetchInformation();
 
 		const outFile = join(tmpdir(), `${randomUUID()}.js`);
@@ -92,17 +103,12 @@ export default class NodeClient {
 		const hash = await calculateFileHash(outFile);
 		const exists = await this.http.get(`/bundles/${hash}`).catch(() => false);
 		if(!exists) {
-			try {
-				await this.http.post('/bundles/create', { hash });	
-				await this.http.post(`/bundles/${hash}/data?compression=none`, createReadStream(outFile), {
-					headers: {
-						'Content-Type': 'application/octet-stream'
-					}
-				}); // TODO: compress big files
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			} catch (error: any) {
-				throw new Error(`Could not upload bundle to node: ${error.message}`);
-			}
+			await this.http.post('/bundles/create', { hash });	
+			await this.http.post(`/bundles/${hash}/data?compression=none`, createReadStream(outFile), {
+				headers: {
+					'Content-Type': 'application/octet-stream'
+				}
+			}); // TODO: compress big files
 		}
 
 		return hash;
