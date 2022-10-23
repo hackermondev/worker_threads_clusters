@@ -1,5 +1,4 @@
 import express, { Express, NextFunction, Request, Response } from 'express';
-import cors from 'cors';
 import bodyParser from 'body-parser';
 
 import { hostname } from 'os';
@@ -46,11 +45,10 @@ export default class Server {
 		
 		// Register routes & middlewares
 		this._http.disable('x-powered-by');
-		this._http.use(cors({ origin: '*', preflightContinue: false }));
-		this._http.use(this._authMiddleware.bind(this));
-
 		this._http.use(bodyParser.json());
 		this._http.use(bodyParser.raw({ type: ['application/octet-stream'], limit: '1GB' }));
+
+		this._http.use(this._authMiddleware.bind(this));
 
 		this.bundles = new BundlesManager(this._http);
 		this.workersManager = new WorkersManager(this._http, this.bundles);
@@ -99,10 +97,8 @@ export default class Server {
 			if(this.auth.username == username && this.auth.password == password) return next();
 		}
 
-		response.status(401);
 		response.set('WWW-Authenticate', 'Basic realm="worker_threads_nodes"');
+		response.status(401);
 		response.send('Authorization required to continue.');
-
-		next();
 	}
 }
