@@ -124,7 +124,7 @@ This is sort of an unfinished project. Right now, everything mentioned previousl
 
 - UDP connection transport
 - Finish working on tests
-
+- Docs
 
 # License
 
