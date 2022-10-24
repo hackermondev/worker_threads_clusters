@@ -89,6 +89,7 @@ export default class Worker extends EventEmitter {
 	private _node: NodeClient;
 	private _hash: string;
 	private _pipes: PassThrough[];
+	private _reconnectionCount = 0;
 
 	public exitCode: number | null;
 	public options: WorkerOptions;
@@ -169,8 +170,9 @@ export default class Worker extends EventEmitter {
 			
 			case 'exit':
 				const code = parseInt(value);
-				this.isLaunched = false;
+
 				this.exitCode = code;
+				this.isLaunched = false;
 
 				this.emit('exit', code);
 				break
@@ -218,7 +220,7 @@ export default class Worker extends EventEmitter {
 		if(this.exitCode) throw workedExitError;
 
 		const encoded = Buffer.from(value).toString('base64');
-		this._pipes[1].write(`worker_message: ${encoded}\n`);	
+		this._pipes[1].write(`worker_message: ${encoded}\n`);
 	}
 
 	terminate() {
@@ -243,6 +245,16 @@ export default class Worker extends EventEmitter {
 		this.exitCode = null;
 		let workerID = this.id;
 
+		if(this._reconnectionCount > 5) {
+			const err = new Error(`Worker disconnected (${this._reconnectionCount} reconnection tries)`);
+
+			// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+			//@ts-ignore
+			err.code = 'ERR_WORKER_DISCONNECTED';
+			
+			return this._handleError(err);
+		}
+
 		if(!this.id) {
 			const response: AxiosResponse<Readable> = await this._node.http.post('/worker', {
 				bundleHash: this._hash,
@@ -257,8 +269,8 @@ export default class Worker extends EventEmitter {
 			response.data.pipe(this._pipes[0], { end: false });
 
 			const request: ClientRequest = response.request;
-			request.socket?.on('close', () => {
-				if(this.exitCode) return;
+			request.socket?.on('close', async () => {
+				if(this.exitCode != null) return;
 
 				manuallyClosed = true
 				rs?.end();
@@ -274,6 +286,18 @@ export default class Worker extends EventEmitter {
 			if(response instanceof Error || axios.isAxiosError(response)) return this._handleError(response);
 
 			response.data.pipe(this._pipes[0], { end: false });
+			this._reconnectionCount += 1;
+
+			response.request?.socket?.on('close', async () => {
+				if(this.exitCode != null) return;
+
+				manuallyClosed = true
+				rs?.end();
+				
+				// attempt reconnection
+				this.isLaunched = false;
+				this._connect();			
+			});
 		}
 
 
@@ -305,7 +329,7 @@ export default class Worker extends EventEmitter {
 				throw err;
 			});
 
-			this._pipes[1].pipe(rs, { end: false });
+			this._pipes[1].pipe(rs);
 			this.isLaunched = true;
 
 			rs.on('response', (response) => {
@@ -322,6 +346,7 @@ export default class Worker extends EventEmitter {
 
 		startWriteStream();
 		const exit = () => {
+			rs?.socket?.end();
 			manuallyClosed = true
 
 			// Remove itself from the workers array in the node class
@@ -334,8 +359,8 @@ export default class Worker extends EventEmitter {
 			}
 		};
 
-		this.once('exit', () => exit());
-		this.once('error', () => exit());
+		this.once('exit', exit);
+		this.once('error', exit);
 		return true;
 	}
 }

@@ -191,7 +191,7 @@ export default class WorkersManager {
 
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		const message = (data: any) => {
-			res.end(`message: ${Buffer.from(data).toString('base64')}\n`);
+			res.write(`message: ${Buffer.from(data).toString('base64')}\n`);
 		};
 
 		const online = () => res.write('online: true\n');
@@ -221,7 +221,7 @@ export default class WorkersManager {
 						this.server._log('[worker-manager] terminating worker', green(worker.id), 'because no more connected read streams (all clients disconnected)');
 						worker.terminate();
 					}
-				}, 5_000)
+				}, 1_000);
 			}
 
 			
